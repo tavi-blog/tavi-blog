@@ -4,7 +4,7 @@ import { getCollection } from 'astro:content';
 export async function GET(context) {
   const posts = await getCollection('blog');
   return rss({
-    title: 'tavi.blog',
+    title: 'tavi-blog',
     description: 'Short-form commentary on world events, from wherever I happen to have standing.',
     site: context.site,
     items: posts
