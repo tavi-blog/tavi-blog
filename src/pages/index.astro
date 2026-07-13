@@ -49,11 +49,10 @@ const posts = (await getCollection('blog')).sort(
   }
 
   .post-list-row {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto;
     align-items: baseline;
     gap: 1rem;
-    flex-wrap: wrap;
   }
 
   .post-list a {
