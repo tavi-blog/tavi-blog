@@ -26,7 +26,6 @@ const posts = (await getCollection('blog')).sort(
                 })}
               </time>
             </div>
-            {post.data.description && <p class="excerpt">{post.data.description}</p>}
           </li>
         ))}
       </ul>
@@ -74,12 +73,5 @@ const posts = (await getCollection('blog')).sort(
     text-transform: uppercase;
     letter-spacing: 0.08em;
     white-space: nowrap;
-  }
-
-  .post-list .excerpt {
-    font-family: var(--font-serif);
-    font-size: 20px;
-    line-height: 1.65;
-    margin: 0.75rem 0 0 0;
   }
 </style>
