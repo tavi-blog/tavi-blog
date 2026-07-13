@@ -1,5 +1,10 @@
 ---
 
+import '@fontsource/ubuntu-mono/400.css';
+import '@fontsource/ubuntu-mono/700.css';
+import '@fontsource/ubuntu/400.css';
+import '@fontsource/ubuntu/400-italic.css';
+
 interface Props {
   title?: string;
   description?: string;
@@ -36,8 +41,8 @@ const pageTitle = title ? `${title} · ${siteTitle}` : siteTitle;
       :root {
         --fg: #000;
         --bg: #fff;
-        --font-mono: 'Courier New', Courier, monospace;
-        --font-serif: Georgia, serif;
+        --font-mono: 'Ubuntu Mono', monospace;
+        --font-serif: 'Ubuntu', sans-serif;
         color-scheme: light;
       }
 
