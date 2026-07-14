@@ -16,5 +16,11 @@
     "subject": "Conviction Is Cheap Until You Have to Act On It",
     "sent_at": "2026-07-12",
     "note": "pre-newsletter"
+  },
+  "newsletter-pipeline-test": {
+    "buttondown_id": "em_5efanb2zg69m2smjjcc6k7daj9",
+    "subject": "Newsletter Pipeline Test",
+    "sent_at": "2026-07-13",
+    "note": "test — deleted"
   }
 }
