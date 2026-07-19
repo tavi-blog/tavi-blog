@@ -171,51 +171,44 @@ jobs:
           git commit -m "chore: update newsletter sent log [skip ci]"
           git push origin main
 
-  tweet:
+  social:
     needs: deploy
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: pip install tweepy anthropic --quiet
+      - name: Install anthropic
+        run: pip install anthropic --quiet
 
-      - name: Tweet new posts
+      - name: Generate social snippet for new posts
         env:
-          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
-          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
-          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           python3 << 'PYEOF'
-          import os, json, glob, re, sys, yaml
-          import tweepy, anthropic
+          import os, json, glob, re, sys, yaml, subprocess
 
-          SENT_FILE = "newsletter-sent.json"
-          TWEETED_FILE = "twitter-sent.json"
+          SOCIAL_FILE = "social-sent.json"
           POSTS_DIR = "src/content/blog"
           BASE_URL = "https://tavi-blog.github.io"
 
-          client = tweepy.Client(
-              consumer_key=os.environ["TWITTER_API_KEY"],
-              consumer_secret=os.environ["TWITTER_API_SECRET"],
-              access_token=os.environ["TWITTER_ACCESS_TOKEN"],
-              access_token_secret=os.environ["TWITTER_ACCESS_TOKEN_SECRET"],
-          )
-
-          tweeted = {}
-          if os.path.exists(TWEETED_FILE):
-              with open(TWEETED_FILE) as f:
-                  tweeted = json.load(f)
+          social = {}
+          if os.path.exists(SOCIAL_FILE):
+              with open(SOCIAL_FILE) as f:
+                  social = json.load(f)
 
           posts = sorted(glob.glob(f"{POSTS_DIR}/*.md"))
-          failed = False
+          api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+          repo = os.environ.get("REPO", "")
 
           for post_path in posts:
               slug = os.path.basename(post_path)[:-3]
-              if slug == ".gitkeep" or slug in tweeted:
+              if slug == ".gitkeep" or slug in social:
                   continue
 
               with open(post_path) as f:
@@ -230,68 +223,68 @@ jobs:
               if not title:
                   continue
 
-              canonical = f"{BASE_URL}/{slug}/"
               body = raw[fm_match.end():].strip()
+              canonical = f"{BASE_URL}/{slug}/"
 
-              hook = None
-              api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+              snippet = None
               if api_key and body:
                   try:
-                      ac = anthropic.Anthropic(api_key=api_key)
+                      import anthropic as ac_mod
+                      ac = ac_mod.Anthropic(api_key=api_key)
                       msg = ac.messages.create(
                           model="claude-haiku-4-5-20251001",
-                          max_tokens=80,
+                          max_tokens=200,
                           messages=[{
                               "role": "user",
                               "content": (
-                                  "Write a single punchy tweet hook (no hashtags, no quotes, no emoji) "
-                                  "that makes someone want to click and read this post. "
-                                  "Under 120 characters. Output only the hook, nothing else.\n\n"
+                                  "Write a social media post to share this blog post on Twitter, Threads, and Substack Notes. "
+                                  "3-4 short sentences. First-person, conversational, same voice as the post itself. "
+                                  "Open with a hook from the post. No hashtags. No emoji. "
+                                  f"End with the link on its own line: {canonical}\n\n"
                                   f"{body[:3000]}"
                               ),
                           }],
                       )
-                      hook = msg.content[0].text.strip()
+                      snippet = msg.content[0].text.strip()
                   except Exception as e:
-                      print(f"Warning: Claude hook generation failed for '{slug}': {e}", file=sys.stderr)
+                      print(f"Warning: Claude generation failed for '{slug}': {e}", file=sys.stderr)
 
-              if not hook:
-                  hook = fm_data.get('description', '').strip()
+              if not snippet:
+                  desc = fm_data.get('description', '').strip()
+                  snippet = f"{desc}\n\n{canonical}" if desc else canonical
 
-              if hook:
-                  max_hook = 280 - len(title) - len(canonical) - 4
-                  if len(hook) > max_hook:
-                      hook = hook[:max_hook - 1].rstrip() + '…'
-                  tweet_text = f"{title}\n\n{hook}\n\n{canonical}"
+              issue_title = f"Social: {title}"
+              issue_body = f"**Ready to share on Twitter / Threads / Substack Notes**\n\n---\n\n{snippet}\n\n---"
+
+              result = subprocess.run(
+                  ["gh", "issue", "create", "--repo", repo,
+                   "--title", issue_title, "--body", issue_body],
+                  capture_output=True, text=True
+              )
+
+              if result.returncode == 0:
+                  issue_url = result.stdout.strip()
+                  social[slug] = {"issue_url": issue_url, "title": title}
+                  with open(SOCIAL_FILE, "w") as f:
+                      json.dump(social, f, indent=2)
+                  print(f"Created issue: {issue_url}")
               else:
-                  tweet_text = f"{title}\n\n{canonical}"
+                  print(f"ERROR creating issue for '{slug}': {result.stderr}", file=sys.stderr)
+                  sys.exit(1)
 
-              try:
-                  resp = client.create_tweet(text=tweet_text)
-                  tweet_id = resp.data["id"]
-                  tweeted[slug] = {"tweet_id": tweet_id, "title": title}
-                  with open(TWEETED_FILE, "w") as f:
-                      json.dump(tweeted, f, indent=2)
-                  print(f"Tweeted: {title} ({tweet_id})")
-              except Exception as e:
-                  print(f"ERROR tweeting '{slug}': {e}", file=sys.stderr)
-                  failed = True
-
-          if failed:
-              sys.exit(1)
           PYEOF
 
-      - name: Commit twitter sent log
+      - name: Commit social sent log
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if [ ! -f twitter-sent.json ] || git diff --quiet twitter-sent.json; then
-            echo "No new tweets."
+          if [ ! -f social-sent.json ] || git diff --quiet social-sent.json; then
+            echo "No new social posts."
             exit 0
           fi
           git stash
           git pull --rebase origin main
           git stash pop
-          git add twitter-sent.json
-          git commit -m "chore: update twitter sent log [skip ci]"
+          git add social-sent.json
+          git commit -m "chore: update social sent log [skip ci]"
           git push origin main
